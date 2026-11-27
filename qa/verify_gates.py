@@ -45,7 +45,7 @@ def launch_browser(p, software_gl=False):
     raise RuntimeError('No Chromium/Chrome/Edge browser available for Playwright.')
 
 
-def run_gates(html_path, out_dir=None, save_shots=False, software_gl=False):
+def run_gates(html_path, out_dir=None, save_shots=False, software_gl=False, boot_timeout=180):
     html_abs = os.path.abspath(html_path)
     if not os.path.isfile(html_abs):
         raise FileNotFoundError(f'HTML bundle not found: {html_abs}')
@@ -68,6 +68,7 @@ def run_gates(html_path, out_dir=None, save_shots=False, software_gl=False):
             browser, ch = launch_browser(p, software_gl=software_gl)
             results['browserChannel'] = ch
             page = browser.new_page(viewport={'width': 1280, 'height': 720})
+            page.set_default_timeout(boot_timeout * 1000)
             page.on('pageerror', lambda e: errors.append(f'PAGEERROR: {e}'))
             page.on('console', lambda m: errors.append(f'CONSOLE_{m.type}: {m.text}') if m.type == 'error' else None)
             page.on(
@@ -79,8 +80,11 @@ def run_gates(html_path, out_dir=None, save_shots=False, software_gl=False):
 
             url = 'file:///' + html_abs.replace('\\', '/') + '?debug=1'
             t0 = time.perf_counter()
-            page.goto(url, wait_until='domcontentloaded', timeout=45000)
-            page.wait_for_function('() => window.__G && window.__G.stats && window.__G.stats().frames > 1', timeout=45000)
+            page.goto(url, wait_until='domcontentloaded', timeout=boot_timeout * 1000)
+            page.wait_for_function(
+                '() => window.__G && window.__G.stats && window.__G.stats().frames > 1',
+                timeout=boot_timeout * 1000,
+            )
             results['bootMs'] = round((time.perf_counter() - t0) * 1000)
             results['externalRequests'] = ext_requests
 
@@ -261,8 +265,20 @@ def main():
     ap.add_argument('--out', default=os.path.join(ROOT, 'qa_out'))
     ap.add_argument('--save-shots', action='store_true', help='Save 10 scene PNGs and contact_sheet.png to --out.')
     ap.add_argument('--software-gl', action='store_true', help='Force SwiftShader software WebGL2 for headless Linux CI.')
+    ap.add_argument(
+        '--boot-timeout',
+        type=int,
+        default=180,
+        help='Seconds allowed for first-render boot; SwiftShader CI runners need a wider budget than real GPUs.',
+    )
     args = ap.parse_args()
-    run_gates(args.html, out_dir=args.out, save_shots=args.save_shots, software_gl=args.software_gl)
+    run_gates(
+        args.html,
+        out_dir=args.out,
+        save_shots=args.save_shots,
+        software_gl=args.software_gl,
+        boot_timeout=args.boot_timeout,
+    )
 
 
 if __name__ == '__main__':
