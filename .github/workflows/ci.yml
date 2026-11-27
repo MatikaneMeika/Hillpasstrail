@@ -1,0 +1,39 @@
+name: Hill Pass Trail CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: JS Syntax Check (12 modules)
+        run: |
+          for f in src/*.js; do
+            node --check "$f"
+          done
+
+      - name: Deterministic Build Check (LF)
+        run: python scripts/build.py --check
+
+      - name: Privacy, Trademark & Dead-Code Hygiene Gate
+        run: python scripts/check_hygiene.py
+
+      - name: Install Playwright & Run Headless WebGL2 Gates
+        run: |
+          pip install -r qa/requirements.txt
+          playwright install chromium
+          python qa/verify_gates.py --html index.html --software-gl

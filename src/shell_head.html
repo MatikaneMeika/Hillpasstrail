@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HILL PASS TRAIL — Endless Rainy Mountain Rally</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%230b0d11'/%3E%3Crect x='4' y='4' width='56' height='56' rx='6' fill='none' stroke='%23f5f3ee' stroke-width='2.5'/%3E%3Cpath d='M10 46 L26 20 L38 36 L46 25 L54 46 Z' fill='%23f5f3ee'/%3E%3Cpath d='M26 20 L32 28 L25 30 L21 27 Z' fill='%23ff6b18'/%3E%3Cpath d='M16 52 C24 44 39 45 35 37 C32 32 42 30 49 26' fill='none' stroke='%23ff6b18' stroke-width='4.5' stroke-linecap='square'/%3E%3C/svg%3E" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden; background: #14171c;
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", "Hiragino Kaku Gothic ProN", "Meiryo", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+    color: #f5f3ee;
+  }
+  #glCanvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+
+  /* =====================================================================
+     MANGA / ANIME EDITORIAL GRAPH-PAPER RALLY HUD (SAFE-AREA GRID)
+     ===================================================================== */
+  #hud {
+    position: fixed; inset: 0; pointer-events: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      "tl tc tr"
+      "ml mc mr"
+      "bl bc br";
+    gap: 8px 14px;
+    padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    will-change: transform, opacity;
+    transform-origin: 50% 54%;
+    --hx: 0px; --hy: 0px; --hrx: 0deg; --hry: 0deg; --hrz: 0deg; --hscale: 1;
+    transform: perspective(1150px) translate3d(var(--hx), var(--hy), 0px) rotateX(var(--hrx)) rotateY(var(--hry)) rotateZ(var(--hrz)) scale(var(--hscale));
+    transition: opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  body.pause-open #hud { opacity: 0; pointer-events: none; }
+  .hud-tl { grid-area: tl; display: flex; flex-direction: column; align-items: flex-start; gap: 7px; min-width: 0; }
+  .hud-tc { grid-area: tc; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+  .hud-tr { grid-area: tr; display: flex; flex-direction: column; align-items: flex-end; gap: 7px; min-width: 0; }
+  .hud-tr-sub { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  .hud-bl { grid-area: bl; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 6px; }
+  .hud-bc { grid-area: bc; display: flex; align-items: flex-end; justify-content: center; }
+  .hud-br { grid-area: br; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; }
+  .drift-box, .boost-box, .map-wrap, .br-wrap { will-change: transform; }
+
+  /* Shared Manga Graph-Paper Surface */
+  .drift-box, .boost-box, .speed-wrap, #fpsBadge, #waveInfo, .m-pad {
+    background-color: #0b0d11;
+    background-image:
+      linear-gradient(rgba(245, 243, 238, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(245, 243, 238, 0.045) 1px, transparent 1px);
+    background-size: 12px 12px;
+  }
+
+  .ico-svg { width: 14px; height: 14px; display: block; flex: 0 0 auto; }
+  .ico-svg.sm { width: 12px; height: 12px; }
+  .ico-svg.lg { width: 20px; height: 20px; }
+
+  .drift-box {
+    position: relative;
+    padding: 7px 15px 7px 13px;
+    border: 2.5px solid #f5f3ee;
+    box-shadow: 5px 5px 0 #090b0f;
+    transform: skewX(-10deg);
+    max-width: 100%;
+  }
+  .drift-box > * { transform: skewX(10deg); }
+  .drift-label { font-size: 11px; font-weight: 900; letter-spacing: 1.4px; color: #d5d2ca; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .drift-star { color: #ff6b18; display: inline-flex; align-items: center; }
+  .drift-val { font-size: 36px; font-weight: 900; font-style: italic; line-height: 0.96; letter-spacing: -1px; color: #ffffff; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .drift-sub { margin-top: 4px; display: inline-block; padding: 1px 7px; background: #f5f3ee; color: #0b0d11; font-size: 10.5px; font-weight: 900; font-style: italic; letter-spacing: 0.4px; white-space: nowrap; }
+
+  .cp-pill {
+    display: flex; align-items: center; gap: 9px; padding: 6px 16px;
+    background-color: #f5f3ee;
+    background-image:
+      linear-gradient(rgba(11, 13, 17, 0.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(11, 13, 17, 0.055) 1px, transparent 1px);
+    background-size: 12px 12px;
+    color: #0b0d11;
+    border: 2.5px solid #0b0d11;
+    box-shadow: 4px 4px 0 #0b0d11;
+    transform: skewX(-10deg);
+    font-size: 11.5px; font-weight: 900; letter-spacing: 1px; white-space: nowrap;
+  }
+  .cp-pill > * { transform: skewX(10deg); }
+  .cp-flag { display: inline-flex; align-items: center; color: #0b0d11; }
+  .cp-arrow { width: 20px; height: 20px; background: #0b0d11; color: #f5f3ee; display: grid; place-items: center; }
+
+  /* Minimalist Manga On-Screen Rally Pace Note Signpost */
+  #paceBanner {
+    transform: skewX(-10deg) translateY(-6px);
+    display: flex; align-items: stretch; gap: 0;
+    background: #0b0d11; color: #f5f3ee;
+    border: 2.5px solid #0b0d11;
+    box-shadow: 5px 5px 0 #0b0d11;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.20s cubic-bezier(0.22, 1, 0.36, 1);
+    overflow: hidden;
+  }
+  #paceBanner.visible {
+    opacity: 1;
+    transform: skewX(-10deg) translateY(0);
+  }
+  #paceBanner.hidden-opt { display: none !important; }
+  .pace-icon-box {
+    width: 44px; min-height: 40px; display: grid; place-items: center;
+    background: #ff6b18; color: #0b0d11;
+    border-right: 2.5px solid #0b0d11;
+  }
+  .pace-icon-box > svg { width: 26px; height: 26px; transform: skewX(10deg); display: block; }
+  #paceBanner[data-sev="danger"] .pace-icon-box { background: #e52521; color: #ffffff; }
+  #paceBanner[data-sev="sharp"]  .pace-icon-box { background: #ff6b18; color: #0b0d11; }
+  #paceBanner[data-sev="medium"] .pace-icon-box { background: #f5b324; color: #0b0d11; }
+  #paceBanner[data-sev="fast"]   .pace-icon-box { background: #f5f3ee; color: #0b0d11; }
+  #paceBanner[data-sev="hazard"] .pace-icon-box { background: #2684ff; color: #ffffff; }
+
+  .pace-body {
+    display: flex; align-items: center; gap: 10px;
+    padding: 4px 12px 4px 10px;
+    background-color: #f5f3ee;
+    background-image:
+      linear-gradient(rgba(11, 13, 17, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(11, 13, 17, 0.05) 1px, transparent 1px);
+    background-size: 12px 12px;
+    color: #0b0d11;
+  }
+  .pace-body > * { transform: skewX(10deg); }
+  .pace-text-col { display: flex; flex-direction: column; line-height: 1.05; }
+  .pace-call { font-size: 15px; font-weight: 900; font-style: italic; letter-spacing: 0.8px; color: #0b0d11; white-space: nowrap; }
+  .pace-mod { font-size: 9.5px; font-weight: 900; letter-spacing: 1px; color: #ff6b18; text-transform: uppercase; margin-top: 2px; white-space: nowrap; }
+  .pace-mod:empty { display: none; }
+  .pace-dist {
+    padding: 3px 7px; background: #0b0d11; color: #f5f3ee;
+    font-size: 11.5px; font-weight: 900; font-variant-numeric: tabular-nums;
+    letter-spacing: 0.6px; white-space: nowrap;
+  }
+
+  .boost-box {
+    width: 224px; padding: 8px 14px 9px;
+    border: 2.5px solid #f5f3ee;
+    box-shadow: 5px 5px 0 #090b0f;
+    transform: skewX(-10deg);
+  }
+  .boost-inner { transform: skewX(10deg); }
+  .boost-head { display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: 900; letter-spacing: 1.5px; color: #f5f3ee; margin-bottom: 5px; white-space: nowrap; }
+  .boost-head-ico { color: #ff6b18; display: inline-flex; align-items: center; }
+  .boost-segs { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; height: 11px; }
+  .bseg { background: rgba(245,243,238,0.16); border: 1px solid rgba(245,243,238,0.28); transform: skewX(-10deg); }
+  .bseg.on { background: #f5f3ee; border-color: #ffffff; }
+  .boost-foot { display: flex; justify-content: flex-end; align-items: center; gap: 5px; margin-top: 4px; font-size: 11.5px; font-weight: 900; letter-spacing: 0.8px; color: #f5f3ee; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .boost-bolt { color: #ff6b18; display: inline-flex; align-items: center; }
+
+  #fpsBadge {
+    display: flex; align-items: center; gap: 7px; padding: 5px 11px;
+    color: #f5f3ee;
+    border: 2px solid #f5f3ee; box-shadow: 4px 4px 0 #090b0f;
+    transform: skewX(-10deg); font-variant-numeric: tabular-nums;
+    font-size: 11.5px; font-weight: 900; letter-spacing: 0.8px; white-space: nowrap;
+  }
+  #fpsBadge > * { transform: skewX(10deg); }
+  #fpsBadge.hidden-opt { display: none !important; }
+  .fps-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+  #fpsBadge[data-tier="mid"] .fps-dot { background: #f5b324; box-shadow: 0 0 8px #f5b324; }
+  #fpsBadge[data-tier="low"] .fps-dot { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+  #fpsVal { color: #ffffff; font-size: 12.5px; }
+  .fps-unit { color: #ff6b18; font-size: 10px; }
+  #fpsMs { color: #b8c0cc; font-size: 10.5px; margin-left: 2px; }
+
+  .map-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+  .map-ring {
+    width: 118px; height: 118px; border-radius: 50%;
+    border: 3px solid #0b0d11;
+    box-shadow: 0 0 0 2.5px #f5f3ee, 5px 5px 0 #090b0f;
+    overflow: hidden; background: #1c2228;
+    filter: contrast(1.12) saturate(0.76);
+  }
+  #miniMap { width: 100%; height: 100%; display: block; }
+  .map-title {
+    padding: 2px 9px; background: #0b0d11; color: #f5f3ee; border: 2px solid #f5f3ee;
+    font-size: 10px; font-weight: 900; letter-spacing: 1.1px; text-transform: uppercase;
+    transform: skewX(-10deg); white-space: nowrap;
+  }
+
+  .speed-wrap {
+    transform: skewX(-10deg);
+    display: flex; align-items: center; gap: 12px; padding: 6px 18px 6px 12px;
+    border: 2.5px solid #f5f3ee;
+    box-shadow: 5px 5px 0 #090b0f;
+  }
+  body.cockpit-mode .speed-wrap { opacity: 0; pointer-events: none; visibility: hidden; }
+  .speed-wrap > * { transform: skewX(10deg); }
+  .rpm-dial { position: relative; width: 54px; height: 54px; }
+  .rpm-dial svg { width: 54px; height: 54px; transform: rotate(135deg); }
+  .rpm-needle { position: absolute; left: 50%; top: 50%; width: 2.5px; height: 20px; background: #ff6b18; transform-origin: 50% 85%; margin-left: -1.25px; margin-top: -16px; }
+  .speed-read { text-align: left; }
+  .speed-top { display: flex; align-items: baseline; gap: 5px; }
+  .speed-num { font-size: 44px; font-weight: 900; font-style: italic; line-height: 0.90; letter-spacing: -1.5px; color: #ffffff; font-variant-numeric: tabular-nums; }
+  .speed-unit { font-size: 12.5px; font-weight: 900; font-style: italic; color: #ff6b18; }
+  .speed-lbl { font-size: 10px; font-weight: 900; letter-spacing: 1.8px; color: #aeb6c0; margin-top: 2px; white-space: nowrap; }
+
+  .br-wrap { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .hints { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 900; letter-spacing: 0.7px; color: #f5f3ee; text-shadow: 1.5px 1.5px 0 #0b0d11; white-space: nowrap; }
+  .kcap { padding: 2px 6px; background: #f5f3ee; color: #0b0d11; border: 1.5px solid #0b0d11; box-shadow: 2px 2px 0 #0b0d11; font-size: 10px; font-weight: 900; }
+  .br-row { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; color: #f5f3ee; pointer-events: auto; }
+  #waveInfo { padding: 3px 10px; border: 2px solid #f5f3ee; box-shadow: 3px 3px 0 #090b0f; font-size: 10px; font-weight: 900; letter-spacing: 0.8px; transform: skewX(-8deg); white-space: nowrap; }
+  .tiny-btn {
+    cursor: pointer; padding: 4px 9px;
+    display: inline-flex; align-items: center; gap: 5px;
+    border: 2px solid #0b0d11;
+    background: #f5f3ee; color: #0b0d11;
+    box-shadow: 2.5px 2.5px 0 #0b0d11;
+    font-size: 10px; font-weight: 900; letter-spacing: 0.6px;
+    transform: skewX(-8deg);
+    transition: background 0.10s, color 0.10s, transform 0.10s;
+    white-space: nowrap;
+  }
+  .tiny-btn:hover { background: #ff6b18; color: #0b0d11; transform: skewX(-8deg) translateY(-1px); }
+  .tiny-btn.settings-trigger { background: #0b0d11; color: #f5f3ee; border-color: #ff6b18; }
+  .tiny-btn.settings-trigger:hover { background: #ff6b18; color: #0b0d11; border-color: #0b0d11; }
+  #muteBtn[data-muted="1"] .ico-sound-on { display: none; }
+  #muteBtn:not([data-muted="1"]) .ico-sound-off { display: none; }
+
+  /* =====================================================================
+     MANGA / ANIME EDITORIAL MINIMALIST PAUSE & SETTINGS OVERLAY
+     (Stark Ink #0b0d11 + Paper White #f5f3ee + Rally Orange #ff6b18,
+      Hard Comic Shadows, Halftone Screentone, ZERO AI Glassmorphism!)
+     ===================================================================== */
+  #pauseOverlay {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 24px 40px 18px;
+    background:
+      radial-gradient(rgba(11, 13, 17, 0.24) 1px, transparent 1px),
+      linear-gradient(112deg, rgba(11, 13, 17, 0.56) 0%, rgba(11, 13, 17, 0.34) 55%, rgba(11, 13, 17, 0.58) 100%);
+    background-size: 8px 8px, 100% 100%;
+    opacity: 0; pointer-events: none; visibility: hidden;
+    transition: opacity 0.14s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.14s;
+  }
+  body.pause-open #pauseOverlay {
+    opacity: 1; pointer-events: auto; visibility: visible;
+  }
+
+  /* Manga Editorial Top Strip */
+  .mg-top {
+    position: relative; z-index: 2;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding-bottom: 12px;
+    border-bottom: 3px solid #0b0d11;
+    transform: translateY(-8px); opacity: 0;
+    transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
+  }
+  body.pause-open .mg-top { transform: translateY(0); opacity: 1; }
+
+  .mg-brand-box {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 18px 8px 14px;
+    background: #0b0d11; color: #f5f3ee;
+    border: 2.5px solid #f5f3ee;
+    box-shadow: 5px 5px 0 #ff6b18;
+    transform: skewX(-10deg);
+  }
+  .mg-brand-box > * { transform: skewX(10deg); }
+  .mg-vol-tag {
+    padding: 3px 7px; background: #ff6b18; color: #0b0d11;
+    font-size: 11px; font-weight: 900; letter-spacing: 1px;
+  }
+  .mg-title { font-size: 21px; font-weight: 900; font-style: italic; letter-spacing: 1.6px; color: #ffffff; line-height: 1; }
+  .mg-sub { font-size: 10px; font-weight: 800; letter-spacing: 1.4px; color: #d5d2ca; margin-top: 3px; text-transform: uppercase; }
+
+  .mg-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .mg-stamp {
+    padding: 5px 11px;
+    background: #f5f3ee; color: #0b0d11;
+    border: 2px solid #0b0d11;
+    box-shadow: 3px 3px 0 #0b0d11;
+    transform: skewX(-10deg);
+    font-size: 11px; font-weight: 900; letter-spacing: 0.8px;
+  }
+  .mg-stamp > span { display: inline-block; transform: skewX(10deg); white-space: nowrap; }
+  .mg-stamp.ink { background: #0b0d11; color: #f5f3ee; border-color: #f5f3ee; }
+  .mg-stamp.orange { background: #ff6b18; color: #0b0d11; border-color: #0b0d11; }
+
+  /* Main 2-Column Comic Grid */
+  .mg-main {
+    position: relative; z-index: 2;
+    flex: 1; display: grid; grid-template-columns: 248px 1fr; gap: 24px;
+    align-items: center; padding: 14px 0; max-width: 1180px; width: 100%; margin: 0 auto;
+    min-height: 0;
+  }
+
+  /* Left Manga Index Rail */
+  .mg-rail {
+    display: flex; flex-direction: column; gap: 9px;
+    transform: translateX(-14px); opacity: 0;
+    transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1) 0.03s, opacity 0.22s ease 0.03s;
+  }
+  body.pause-open .mg-rail { transform: translateX(0); opacity: 1; }
+
+  .mg-nav {
+    cursor: pointer; text-align: left;
+    padding: 12px 16px;
+    background: #f5f3ee; color: #0b0d11;
+    border: 2.5px solid #0b0d11;
+    box-shadow: 4px 4px 0 #0b0d11;
+    transform: skewX(-10deg);
+    transition: transform 0.09s ease, box-shadow 0.09s ease;
+  }
+  .mg-nav > * { transform: skewX(10deg); }
+  .mg-nav:hover {
+    transform: skewX(-10deg) translateX(5px);
+    background: #ffffff;
+    box-shadow: 6px 6px 0 #ff6b18;
+  }
+  .mg-nav.active {
+    background: #0b0d11; color: #f5f3ee;
+    border-color: #f5f3ee;
+    box-shadow: 6px 6px 0 #ff6b18;
+    transform: skewX(-10deg) translateX(8px);
+  }
+  .mg-nav.hero {
+    padding: 15px 18px;
+    background: #ff6b18; color: #0b0d11;
+    border-color: #0b0d11;
+    box-shadow: 5px 5px 0 #0b0d11;
+  }
+  .mg-nav.hero:hover {
+    background: #ffffff; color: #0b0d11;
+    box-shadow: 6px 6px 0 #ff6b18;
+  }
+  .mg-nav-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .mg-nav-idx { font-size: 10px; font-weight: 900; opacity: 0.65; margin-right: 6px; font-variant-numeric: tabular-nums; }
+  .mg-nav-title { font-size: 15px; font-weight: 900; letter-spacing: 0.9px; text-transform: uppercase; white-space: nowrap; }
+  .mg-nav.hero .mg-nav-title { font-size: 17px; font-style: italic; }
+  .mg-nav-sub { font-size: 10px; font-weight: 700; opacity: 0.76; margin-top: 2px; }
+  .mg-nav-tag {
+    padding: 2px 6px; font-size: 10px; font-weight: 900;
+    background: #0b0d11; color: #f5f3ee; white-space: nowrap;
+  }
+  .mg-nav.active .mg-nav-tag { background: #ff6b18; color: #0b0d11; }
+
+  /* Custom Minimalist SVG Emblem */
+  .mg-logo-wrap {
+    width: 44px; height: 44px; flex: 0 0 44px;
+    display: grid; place-items: center;
+    background: #0b0d11; border: 2px solid #f5f3ee;
+    box-shadow: 3px 3px 0 #ff6b18;
+  }
+  .mg-logo-wrap svg { width: 38px; height: 38px; display: block; }
+
+  /* Right Paper-White Manga Graph-Paper Spec Sheet */
+  .mg-sheet {
+    position: relative;
+    background-color: #f5f3ee;
+    background-image:
+      linear-gradient(rgba(11, 13, 17, 0.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(11, 13, 17, 0.055) 1px, transparent 1px);
+    background-size: 20px 20px;
+    color: #0b0d11;
+    border: 3px solid #0b0d11;
+    box-shadow: 9px 9px 0 #0b0d11, 13px 13px 0 #ff6b18;
+    padding: 22px 26px;
+    max-height: calc(100vh - 150px);
+    overflow-y: auto;
+    transform: translateX(14px); opacity: 0;
+    transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1) 0.05s, opacity 0.22s ease 0.05s;
+  }
+  .mg-head-actions { display: flex; align-items: center; gap: 10px; }
+  .mg-reset-btn {
+    cursor: pointer; padding: 4px 10px;
+    background: #f5f3ee; color: #0b0d11;
+    border: 2px solid #0b0d11; box-shadow: 2.5px 2.5px 0 #0b0d11;
+    font-size: 10px; font-weight: 900; letter-spacing: 0.8px;
+    transform: skewX(-10deg); text-transform: uppercase;
+    transition: background 0.1s, color 0.1s;
+  }
+  .mg-reset-btn:hover { background: #0b0d11; color: #f5f3ee; box-shadow: 2.5px 2.5px 0 #ff6b18; }
+  body.pause-open .mg-sheet { transform: translateX(0); opacity: 1; }
+
+  .mg-panel { display: none; flex-direction: column; gap: 14px; }
+  .mg-panel.active { display: flex; }
+
+  .mg-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+    border-bottom: 3px solid #0b0d11; padding-bottom: 8px;
+  }
+  .mg-head-title { font-size: 20px; font-weight: 900; font-style: italic; letter-spacing: 1px; color: #0b0d11; }
+  .mg-head-desc { font-size: 11px; font-weight: 800; color: #474d57; }
+
+  /* Preset Cards (4-up Compact Strip) */
+  .mg-preset-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
+  .mg-preset-grid.lang-grid { grid-template-columns: repeat(3, 1fr); }
+  .mg-card {
+    cursor: pointer; text-align: left; padding: 10px 12px;
+    background: #ffffff; color: #0b0d11;
+    border: 2px solid #0b0d11;
+    box-shadow: 3px 3px 0 #0b0d11;
+    transition: transform 0.10s, background 0.10s, box-shadow 0.10s;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .mg-card:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 #ff6b18; }
+  .mg-card.selected {
+    background: #0b0d11; color: #f5f3ee;
+    border-color: #0b0d11;
+    box-shadow: 4px 4px 0 #ff6b18;
+  }
+  .mg-card-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .mg-card-name { font-size: 14px; font-weight: 900; font-style: italic; letter-spacing: 0.5px; }
+  .mg-card-badge {
+    font-size: 9px; font-weight: 900; padding: 1px 5px;
+    background: #e5e2da; color: #0b0d11; white-space: nowrap;
+  }
+  .mg-card.selected .mg-card-badge { background: #ff6b18; color: #0b0d11; }
+  .mg-card-desc { font-size: 10.5px; font-weight: 700; opacity: 0.78; line-height: 1.35; }
+  .mg-lang-big { font-size: 20px; font-weight: 900; margin: 2px 0; }
+
+  /* Dense Manga Controls Grid */
+  .mg-ctrl-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+  .mg-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 8px 12px;
+    background: #ffffff; color: #0b0d11;
+    border: 2px solid #0b0d11;
+  }
+  .mg-row.full { grid-column: span 2; }
+  .mg-lbl { font-size: 11.5px; font-weight: 900; letter-spacing: 0.5px; color: #0b0d11; white-space: nowrap; }
+  .mg-slider-wrap { display: flex; align-items: center; gap: 10px; flex: 1; justify-content: flex-end; max-width: 240px; }
+  .mg-slider {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 6px;
+    background: #d8d5ce; border: 1.5px solid #0b0d11; outline: none; cursor: pointer;
+  }
+  .mg-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 14px; height: 18px;
+    background: #ff6b18; border: 2px solid #0b0d11; transform: skewX(-10deg); cursor: pointer;
+  }
+  .mg-val { font-size: 12px; font-weight: 900; color: #0b0d11; min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* Segmented Comic Switch & Toggle Buttons */
+  .mg-seg { display: flex; gap: 4px; }
+  .mg-seg-btn {
+    cursor: pointer; padding: 3px 9px;
+    background: #f5f3ee; color: #0b0d11;
+    border: 2px solid #0b0d11;
+    font-size: 10.5px; font-weight: 900; letter-spacing: 0.5px;
+    transform: skewX(-8deg);
+    transition: background 0.10s, color 0.10s;
+    white-space: nowrap;
+  }
+  .mg-seg-btn:hover { background: #ffe0cc; }
+  .mg-seg-btn.on { background: #0b0d11; color: #f5f3ee; box-shadow: 2px 2px 0 #ff6b18; }
+  .mg-toggle {
+    cursor: pointer; padding: 3px 14px;
+    background: #e5e2da; color: #0b0d11;
+    border: 2px solid #0b0d11;
+    font-size: 11px; font-weight: 900; letter-spacing: 0.7px;
+    transform: skewX(-8deg);
+    min-width: 62px; text-align: center;
+  }
+  .mg-toggle.on { background: #ff6b18; color: #0b0d11; box-shadow: 2px 2px 0 #0b0d11; }
+
+  /* Live Acoustic / Telemetry Comic Strip */
+  .mg-strip {
+    display: flex; flex-wrap: wrap; gap: 7px; padding-top: 2px;
+  }
+  .mg-tag {
+    padding: 3px 9px;
+    background: #0b0d11; color: #f5f3ee;
+    border: 1.5px solid #0b0d11;
+    font-size: 10.5px; font-weight: 900; letter-spacing: 0.6px;
+    transform: skewX(-8deg);
+  }
+  .mg-tag.accent { background: #ff6b18; color: #0b0d11; }
+  .mg-note {
+    padding: 8px 12px; background: #ece8df; border-left: 4px solid #ff6b18;
+    font-size: 11px; font-weight: 800; color: #2b3038;
+  }
+
+  /* Bottom Manga Footer Strip */
+  .mg-foot {
+    position: relative; z-index: 2;
+    display: flex; align-items: center; justify-content: space-between;
+    padding-top: 10px; border-top: 3px solid #0b0d11;
+    font-size: 11px; font-weight: 900; color: #f5f3ee;
+    text-shadow: 1.5px 1.5px 0 #0b0d11;
+  }
+  .mg-foot-keys { display: flex; align-items: center; gap: 14px; }
+  .mg-k {
+    display: inline-block; padding: 2px 7px; margin-right: 5px;
+    background: #f5f3ee; color: #0b0d11;
+    border: 1.5px solid #0b0d11; box-shadow: 2px 2px 0 #0b0d11;
+    font-size: 10px; font-weight: 900; transform: skewX(-10deg); text-shadow: none;
+  }
+
+  /* === STAGE RANK BADGE, EVENT TOAST & CHECKPOINT SPLIT === */
+  .drift-top-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  #rankBadge {
+    display: inline-grid; place-items: center; min-width: 28px; height: 22px; padding: 0 6px;
+    background: #2b313c; color: #f5f3ee; border: 1.5px solid #f5f3ee;
+    font-size: 12px; font-weight: 900; font-style: italic; letter-spacing: 0.6px;
+  }
+  #rankBadge[data-rank="B"] { background: #2684ff; color: #ffffff; }
+  #rankBadge[data-rank="A"] { background: #22c55e; color: #0b0d11; }
+  #rankBadge[data-rank="S"] { background: #ff6b18; color: #0b0d11; }
+  #rankBadge[data-rank="S+"] { background: #f5b324; color: #0b0d11; box-shadow: 0 0 8px rgba(245,179,36,0.7); }
+  #eventToast {
+    display: flex; align-items: center; gap: 8px; padding: 5px 12px;
+    background: #ff6b18; color: #0b0d11;
+    border: 2.5px solid #0b0d11; box-shadow: 4px 4px 0 #0b0d11;
+    transform: skewX(-10deg) translateX(-14px);
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity 0.16s ease, transform 0.20s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.16s;
+  }
+  #eventToast > * { transform: skewX(10deg); }
+  #eventToast.show { opacity: 1; visibility: visible; transform: skewX(-10deg) translateX(0); }
+  #eventToast[data-tone="cyan"] { background: #3ee0f5; color: #0b0d11; }
+  #eventToast[data-tone="gold"] { background: #f5b324; color: #0b0d11; }
+  #eventToast[data-tone="danger"] { background: #e52521; color: #ffffff; }
+  #eventToastTag { font-size: 11px; font-weight: 900; letter-spacing: 1px; white-space: nowrap; }
+  #eventToastPts {
+    padding: 1px 6px; background: #0b0d11; color: #f5f3ee;
+    font-size: 11px; font-weight: 900; font-style: italic; white-space: nowrap;
+  }
+  #splitBadge {
+    display: none; padding: 2px 7px; background: #0b0d11; color: #f5f3ee;
+    font-size: 11px; font-weight: 900; font-variant-numeric: tabular-nums;
+  }
+  #splitBadge.show { display: inline-block; }
+  #splitBadge.fast { background: #16a34a; color: #ffffff; }
+  #splitBadge.slow { background: #dc2626; color: #ffffff; }
+
+  /* === MANGA / ANIME MINIMALIST MOBILE MULTI-TOUCH CONTROLS === */
+  #mobileControls {
+    position: fixed; inset: 0; z-index: 32; pointer-events: none;
+    display: none; touch-action: none; -webkit-user-select: none; user-select: none;
+  }
+  .m-top-tools { display: none; gap: 6px; pointer-events: auto; }
+  body.mobile-mode:not(.pause-open) #mobileControls { display: block; }
+  body.mobile-mode:not(.pause-open) .m-top-tools { display: flex; }
+  body.mobile-mode .hints, body.mobile-mode .br-wrap { display: none !important; }
+  body.mobile-mode .hud-bl {
+    grid-area: ml;
+    justify-content: flex-start;
+    align-items: flex-start;
+    padding-top: 2px;
+  }
+  body.mobile-mode .map-ring { width: 78px; height: 78px; }
+  body.mobile-mode .map-title { font-size: 9px; padding: 1px 7px; }
+  body.mobile-mode .speed-wrap { transform: skewX(-10deg) scale(0.82); transform-origin: bottom center; }
+
+  .m-steer-zone {
+    position: absolute;
+    left: max(14px, env(safe-area-inset-left));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    width: 198px; height: 84px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 9px;
+    pointer-events: auto; touch-action: none;
+  }
+  .m-pad {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    color: #f5f3ee;
+    border: 2.5px solid #f5f3ee; box-shadow: 4px 4px 0 #090b0f;
+    transform: skewX(-10deg); touch-action: none; pointer-events: auto;
+    transition: background 0.06s, color 0.06s, transform 0.06s, box-shadow 0.06s;
+  }
+  .m-pad > * { transform: skewX(10deg); pointer-events: none; }
+  .m-pad.steer-key { pointer-events: none; }
+  .m-pad.pressed {
+    background: #ff6b18; color: #0b0d11; border-color: #0b0d11;
+    box-shadow: 2px 2px 0 #0b0d11; transform: skewX(-10deg) translate(2px, 2px);
+  }
+  .m-right-zone {
+    position: absolute;
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+    pointer-events: none;
+  }
+  .m-action-row { display: flex; gap: 8px; }
+  .m-btn-sm { width: 84px; height: 46px; }
+  .m-btn-sm .m-ico { display: inline-flex; align-items: center; justify-content: center; }
+  .m-btn-sm .m-lbl { font-size: 9.5px; font-weight: 900; letter-spacing: 1px; }
+  .m-btn-sm.drift-pad { border-color: #ff6b18; }
+  .m-btn-sm.boost-pad { border-color: #3ee0f5; }
+  .m-btn-sm.boost-pad.pressed { background: #3ee0f5; color: #0b0d11; }
+  .m-pedal-row { display: flex; gap: 8px; align-items: flex-end; }
+  .m-pedal { width: 84px; height: 84px; }
+  .m-pedal.gas-pad {
+    width: 92px; height: 94px;
+    background-color: #f5f3ee;
+    background-image:
+      linear-gradient(rgba(11, 13, 17, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(11, 13, 17, 0.06) 1px, transparent 1px);
+    background-size: 12px 12px;
+    color: #0b0d11; border-color: #0b0d11;
+  }
+  .m-pedal.gas-pad.auto-on { border-color: #ff6b18; box-shadow: 4px 4px 0 #ff6b18; }
+  .m-pedal .m-ico { display: inline-flex; align-items: center; justify-content: center; }
+  .m-pedal .m-lbl { font-size: 10.5px; font-weight: 900; letter-spacing: 1px; margin-top: 1px; }
+  .m-auto-tag {
+    display: none; margin-top: 2px; padding: 1px 5px; background: #ff6b18; color: #0b0d11;
+    font-size: 8.5px; font-weight: 900; letter-spacing: 0.8px;
+  }
+  .m-pedal.gas-pad.auto-on .m-auto-tag { display: inline-block; }
+  .m-tool-btn {
+    width: 40px; height: 34px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .mg-btn-ico { width: 14px; height: 14px; display: inline-block; vertical-align: -2px; margin-right: 5px; flex: 0 0 auto; }
+
+  @media (max-width: 920px), (max-height: 520px) {
+    #hud {
+      padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+      gap: 6px 10px;
+    }
+    .drift-box { padding: 6px 12px; }
+    .drift-val { font-size: 26px; }
+    .drift-label { font-size: 10px; }
+    .drift-sub { font-size: 9.5px; }
+    .boost-box { width: 176px; padding: 6px 10px; }
+    .boost-head { font-size: 10px; }
+    .boost-segs { height: 9px; }
+    .boost-foot { font-size: 10px; }
+    .cp-pill { padding: 4px 12px; font-size: 10px; gap: 7px; }
+    #paceBanner { transform: skewX(-10deg) scale(0.86); transform-origin: top center; }
+    #paceBanner.visible { transform: skewX(-10deg) scale(0.86); }
+    #fpsBadge { padding: 4px 9px; font-size: 10.5px; }
+    #pauseOverlay { padding: 10px 14px 10px; justify-content: flex-start; gap: 8px; }
+    .mg-top { padding-bottom: 8px; }
+    .mg-brand-box { padding: 5px 12px; gap: 8px; }
+    .mg-title { font-size: 15px; }
+    .mg-sub { display: none; }
+    .mg-main { grid-template-columns: 184px 1fr; gap: 12px; padding: 4px 0; align-items: stretch; overflow: hidden; min-width: 0; }
+    .mg-rail { overflow-y: auto; max-height: 100%; padding-right: 4px; gap: 6px; min-width: 0; }
+    .mg-sheet { padding: 12px 14px; max-height: 100%; overflow-y: auto; min-width: 0; }
+    .mg-foot { display: none; }
+    .mg-ctrl-grid { grid-template-columns: 1fr; gap: 8px; }
+    .mg-row.full { grid-column: span 1; }
+    .mg-preset-grid { grid-template-columns: repeat(2, 1fr); }
+    .mg-nav { padding: 7px 10px; }
+    .mg-nav.hero { padding: 9px 10px; }
+    .mg-nav-title, .mg-nav.hero .mg-nav-title { font-size: 12px; }
+    .mg-nav-sub { display: none; }
+  }
+
+  @media (max-width: 680px) {
+    #hud {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-rows: auto auto 1fr auto;
+      grid-template-areas:
+        "tl tr"
+        "tc tc"
+        "ml mr"
+        "bc bc";
+    }
+    .drift-box { padding: 5px 10px; }
+    .drift-val { font-size: 22px; }
+    .drift-sub { font-size: 8.5px; padding: 1px 5px; }
+    .boost-box { width: 148px; padding: 5px 9px; }
+    .m-steer-zone { left: 10px; width: 158px; height: 74px; gap: 6px; }
+    .m-right-zone { right: 10px; gap: 6px; }
+    .m-action-row, .m-pedal-row { gap: 6px; }
+    .m-btn-sm { width: 72px; height: 40px; }
+    .m-pedal { width: 72px; height: 74px; }
+    .m-pedal.gas-pad { width: 78px; height: 82px; }
+    body.mobile-mode .speed-wrap { margin-bottom: 148px; transform: skewX(-10deg) scale(0.74); }
+    .mg-main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .mg-rail { flex-direction: row; overflow-x: auto; overflow-y: hidden; max-height: none; padding-bottom: 4px; }
+    .mg-nav { flex: 0 0 auto; }
+  }
+</style>
+</head>
+<body>
+<canvas id="glCanvas"></canvas>
+<div id="hud">
+  <div class="hud-tl">
+    <div class="drift-box">
+      <div class="drift-top-row">
+        <div class="drift-label">
+          <span class="drift-star" aria-hidden="true">
+            <svg class="ico-svg sm" viewBox="0 0 24 24" fill="currentColor"><polygon points="12,2 14.8,9.2 22,12 14.8,14.8 12,22 9.2,14.8 2,12 9.2,9.2"/></svg>
+          </span>
+          <span id="lblDriftScore">DRIFT SCORE</span>
+        </div>
+        <span id="rankBadge" data-rank="D">D</span>
+      </div>
+      <div class="drift-val" id="driftVal">0</div>
+      <div class="drift-sub" id="driftSub">STAGE READY x1.0</div>
+    </div>
+    <div id="eventToast" data-tone="orange" aria-live="polite">
+      <span id="eventToastTag">APEX CLIP</span>
+      <span id="eventToastPts">+350</span>
+    </div>
+  </div>
+
+  <div class="hud-tc">
+    <div class="cp-pill">
+      <span class="cp-flag" aria-hidden="true">
+        <svg class="ico-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square">
+          <path d="M5 21V4"/><path d="M5 4h13l-2.5 4.5L18 13H5"/>
+          <rect x="6.5" y="5.5" width="3.5" height="3" fill="currentColor" stroke="none"/>
+          <rect x="10" y="8.5" width="3.5" height="3" fill="currentColor" stroke="none"/>
+        </svg>
+      </span>
+      <span id="cpDist">NEXT CHECKPOINT • 120m</span>
+      <span id="splitBadge"></span>
+      <span class="cp-arrow" aria-hidden="true">
+        <svg class="ico-svg sm" viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 18,12 8,19"/></svg>
+      </span>
+    </div>
+
+    <!-- Minimalist Manga On-Screen Rally Pace Note Signpost -->
+    <div id="paceBanner" data-sev="medium" aria-live="polite">
+      <div class="pace-icon-box" id="paceIconBox">
+        <svg id="paceArrowSvg" viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="square" stroke-linejoin="miter">
+          <path d="M18 30 V10 M11 16 L18 8 L25 16"/>
+        </svg>
+      </div>
+      <div class="pace-body">
+        <div class="pace-text-col">
+          <span class="pace-call" id="paceCall">4 RIGHT</span>
+          <span class="pace-mod" id="paceMod"></span>
+        </div>
+        <span class="pace-dist" id="paceDist">90m</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="hud-tr">
+    <div class="boost-box">
+      <div class="boost-inner">
+        <div class="boost-head">
+          <span id="lblBoost">BOOST</span>
+          <span class="boost-head-ico" aria-hidden="true">
+            <svg class="ico-svg sm" viewBox="0 0 24 24" fill="currentColor"><polygon points="13,2 4,14 11,14 10,22 20,10 13,10"/></svg>
+          </span>
+        </div>
+        <div class="boost-segs" id="boostSegs">
+          <div class="bseg on"></div><div class="bseg on"></div><div class="bseg on"></div><div class="bseg on"></div><div class="bseg on"></div>
+          <div class="bseg on"></div><div class="bseg on"></div><div class="bseg"></div><div class="bseg"></div><div class="bseg"></div>
+        </div>
+        <div class="boost-foot">
+          <span id="boostPct">68%</span>
+          <span class="boost-bolt" aria-hidden="true">
+            <svg class="ico-svg sm" viewBox="0 0 24 24" fill="currentColor"><polygon points="13,2 4,14 11,14 10,22 20,10 13,10"/></svg>
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="hud-tr-sub">
+      <div id="fpsBadge" class="hidden-opt" data-tier="high" aria-live="off">
+        <span class="fps-dot"></span>
+        <span id="fpsVal">60</span>
+        <span class="fps-unit">FPS</span>
+        <span id="fpsMs">16.7ms</span>
+      </div>
+      <div class="m-top-tools">
+        <button class="m-pad m-tool-btn" id="mBtnCam" aria-label="Camera">
+          <svg class="ico-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square">
+            <rect x="2.5" y="6" width="13.5" height="12" rx="1"/><polygon points="16,10 21.5,7 21.5,17 16,14"/><circle cx="9.2" cy="12" r="2.4"/>
+          </svg>
+        </button>
+        <button class="m-pad m-tool-btn" id="mBtnPause" aria-label="Settings">
+          <svg class="ico-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square">
+            <circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="hud-bl">
+    <div class="map-wrap">
+      <div class="map-ring"><canvas id="miniMap" width="140" height="140"></canvas></div>
+      <div class="map-title" id="lblMapTitle">Hill Pass Trail</div>
+    </div>
+  </div>
+
+  <div class="hud-bc">
+    <div class="speed-wrap">
+      <div class="rpm-dial">
+        <svg viewBox="0 0 66 66">
+          <circle cx="33" cy="33" r="24" fill="#0b0d11" stroke="rgba(245,243,238,0.22)" stroke-width="5" stroke-dasharray="110 151" stroke-linecap="butt" />
+          <circle id="rpmArc" cx="33" cy="33" r="24" fill="none" stroke="#ff6b18" stroke-width="5" stroke-dasharray="110 151" stroke-dashoffset="35" stroke-linecap="butt" />
+        </svg>
+        <div class="rpm-needle" id="rpmNeedle"></div>
+      </div>
+      <div class="speed-read">
+        <div class="speed-top"><span class="speed-num" id="speedNum">121</span><span class="speed-unit">KM/H</span></div>
+        <div class="speed-lbl" id="lblSpeed">SPEED</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hud-br">
+    <div class="br-wrap">
+      <div id="waveInfo">GENTLE CURVE • →0% • 00:00.00</div>
+      <div class="hints">
+        <span><span class="kcap">SPACE</span> <span id="hintDrift">DRIFT</span></span>
+        <span><span class="kcap">SHIFT</span> <span id="hintBoost">BOOST</span></span>
+        <span><span class="kcap">V</span> <span id="hintView">VIEW</span></span>
+        <span><span class="kcap">R</span> <span id="hintStage">NEW STAGE</span></span>
+        <span><span class="kcap">ESC</span> <span id="hintPause">MENU</span></span>
+      </div>
+      <div class="br-row">
+        <button class="tiny-btn" id="camBtn" title="Camera View [V]">CHASE</button>
+        <button class="tiny-btn" id="timeBtn" title="Time of Day [C]">NOON</button>
+        <button class="tiny-btn" id="weatherBtn" title="Weather [T]">RAIN</button>
+        <button class="tiny-btn" id="filterBtn" title="Color Filter [F]">CINEMA</button>
+        <button class="tiny-btn" id="muteBtn" title="Audio [M]" data-muted="0" aria-label="Audio">
+          <svg class="ico-svg sm ico-sound-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square">
+            <polygon points="3,9 7.5,9 13,4.5 13,19.5 7.5,15 3,15" fill="currentColor" stroke="none"/>
+            <path d="M16.5 8.5a5 5 0 0 1 0 7M19.5 5.5a9 9 0 0 1 0 13"/>
+          </svg>
+          <svg class="ico-svg sm ico-sound-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square">
+            <polygon points="3,9 7.5,9 13,4.5 13,19.5 7.5,15 3,15" fill="currentColor" stroke="none"/>
+            <path d="M16.5 9l5 6M21.5 9l-5 6"/>
+          </svg>
+        </button>
+        <button class="tiny-btn settings-trigger" id="settingsBtn" title="Settings &amp; Pause [ESC]">
+          <svg class="ico-svg sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square">
+            <circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8"/>
+          </svg>
+          <span id="settingsBtnTxt">SETTINGS</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MANGA / ANIME MINIMALIST MOBILE MULTI-TOUCH CONTROLS -->
+<div id="mobileControls" aria-hidden="true">
+  <div class="m-steer-zone" id="mSteerPad">
+    <div class="m-pad steer-key" id="mSteerL" aria-label="Steer Left">
+      <svg class="ico-svg lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><polyline points="15,5 8,12 15,19"/></svg>
+    </div>
+    <div class="m-pad steer-key" id="mSteerR" aria-label="Steer Right">
+      <svg class="ico-svg lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><polyline points="9,5 16,12 9,19"/></svg>
+    </div>
+  </div>
+  <div class="m-right-zone">
+    <div class="m-action-row">
+      <div class="m-pad m-btn-sm drift-pad" id="mBtnDrift">
+        <span class="m-ico" aria-hidden="true">
+          <svg class="ico-svg" viewBox="0 0 24 24" fill="currentColor"><polygon points="13,2 4,14 11,14 10,22 20,10 13,10"/></svg>
+        </span>
+        <span class="m-lbl" id="mLblDrift">DRIFT</span>
+      </div>
+      <div class="m-pad m-btn-sm boost-pad" id="mBtnBoost">
+        <span class="m-ico" aria-hidden="true">
+          <svg class="ico-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square">
+            <path d="M12 2L17 9h-3l4 7-6 6-6-6 4-7H7z"/><polygon points="12,10 14.2,15 12,18.5 9.8,15" fill="currentColor" stroke="none"/>
+          </svg>
+        </span>
+        <span class="m-lbl" id="mLblBoost">NOS</span>
+      </div>
+    </div>
+    <div class="m-pedal-row">
+      <div class="m-pad m-pedal brake-pad" id="mBtnBrake">
+        <span class="m-ico" aria-hidden="true">
+          <svg class="ico-svg lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><polyline points="5,9 12,16 19,9"/></svg>
+        </span>
+        <span class="m-lbl" id="mLblBrake">BRAKE</span>
+      </div>
+      <div class="m-pad m-pedal gas-pad" id="mBtnGas">
+        <span class="m-ico" aria-hidden="true">
+          <svg class="ico-svg lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"><polyline points="5,15 12,8 19,15"/></svg>
+        </span>
+        <span class="m-lbl" id="mLblGas">GAS</span>
+        <span class="m-auto-tag" id="mAutoTag">AUTO</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MANGA / ANIME EDITORIAL MINIMALIST PAUSE & SETTINGS OVERLAY -->
+<div id="pauseOverlay" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="mg-top">
+    <div class="mg-brand-box">
+      <div class="mg-logo-wrap" aria-hidden="true">
+        <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="3" y="3" width="58" height="58" rx="4" stroke="#f5f3ee" stroke-width="3"/>
+          <path d="M9 48 L25 18 L37 35 L46 23 L55 48 Z" fill="#f5f3ee"/>
+          <path d="M25 18 L32 28 L24 30 L19 26 Z" fill="#ff6b18"/>
+          <path d="M14 54 C23 44 39 46 35 37 C32 31 43 29 51 25" stroke="#ff6b18" stroke-width="5" stroke-linecap="square"/>
+        </svg>
+      </div>
+      <div>
+        <div class="mg-title" id="fhBrandTitle">HILL PASS TRAIL</div>
+        <div class="mg-sub" id="fhPauseSub">READY // MOUNTAIN RALLY STAGE</div>
+      </div>
+      <span class="mg-vol-tag">WEBGL2</span>
+    </div>
+    <div class="mg-meta">
+      <div class="mg-stamp orange"><span id="fhStagePill">S01 • ALPINE PASS</span></div>
+      <div class="mg-stamp ink"><span id="fhFpsPill">60 FPS</span></div>
+      <div class="mg-stamp"><span id="fhQualPill">XULTRA</span></div>
+      <div class="mg-stamp"><span id="fhLangPill">English</span></div>
+    </div>
+  </div>
+
+  <div class="mg-main">
+    <div class="mg-rail">
+      <button class="mg-nav hero" id="fhResumeBtn">
+        <div class="mg-nav-row">
+          <span class="mg-nav-title"><svg class="mg-btn-ico" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg><span id="fhResumeTxt">RESUME DRIVE</span></span>
+          <span class="mg-nav-tag">ESC</span>
+        </div>
+        <div class="mg-nav-sub" id="fhResumeSub">Return immediately to the rally stage</div>
+      </button>
+      <button class="mg-nav active" data-tab="graphics" id="fhTabGraphics">
+        <div class="mg-nav-row">
+          <span><span class="mg-nav-idx">01</span><span class="mg-nav-title" id="fhTabGraphicsTxt">GRAPHICS</span></span>
+          <span class="mg-nav-tag" id="fhTabGraphicsPill">XULTRA</span>
+        </div>
+        <div class="mg-nav-sub" id="fhTabGraphicsSub">Presets, render scale, shadows &amp; post-FX</div>
+      </button>
+      <button class="mg-nav" data-tab="audio" id="fhTabAudio">
+        <div class="mg-nav-row">
+          <span><span class="mg-nav-idx">02</span><span class="mg-nav-title" id="fhTabAudioTxt">AUDIO &amp; NOTES</span></span>
+          <span class="mg-nav-tag" id="fhTabAudioPill">EN</span>
+        </div>
+        <div class="mg-nav-sub" id="fhTabAudioSub">Bass acoustics, reverb &amp; English co-driver</div>
+      </button>
+      <button class="mg-nav" data-tab="driving" id="fhTabDriving">
+        <div class="mg-nav-row">
+          <span><span class="mg-nav-idx">03</span><span class="mg-nav-title" id="fhTabDrivingTxt">DRIVING &amp; HUD</span></span>
+          <span class="mg-nav-tag" id="fhTabDrivingPill">FOV</span>
+        </div>
+        <div class="mg-nav-sub" id="fhTabDrivingSub">Camera, FOV, HUD sway, weather &amp; time</div>
+      </button>
+      <button class="mg-nav" data-tab="language" id="fhTabLanguage">
+        <div class="mg-nav-row">
+          <span><span class="mg-nav-idx">04</span><span class="mg-nav-title" id="fhTabLanguageTxt">LANGUAGE</span></span>
+          <span class="mg-nav-tag" id="fhTabLanguagePill">EN</span>
+        </div>
+        <div class="mg-nav-sub" id="fhTabLanguageSub">简体中文 / English / 日本語</div>
+      </button>
+      <button class="mg-nav" id="fhNewStageBtn">
+        <div class="mg-nav-row">
+          <span class="mg-nav-title"><svg class="mg-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21,4 21,10 15,10"/></svg><span id="fhNewStageTxt">NEW STAGE</span></span>
+          <span class="mg-nav-tag">R</span>
+        </div>
+        <div class="mg-nav-sub" id="fhNewStageSub">Generate fresh mountain rally seed</div>
+      </button>
+    </div>
+
+    <div class="mg-sheet">
+      <!-- 01 GRAPHICS PANEL -->
+      <div class="mg-panel active" id="fhPanelGraphics">
+        <div class="mg-head">
+          <div>
+            <div class="mg-head-title" id="fhGfxTitle">GRAPHICS &amp; RENDER PIPELINE</div>
+            <div class="mg-head-desc" id="fhGfxDesc">Live WebGL2 quality preset &amp; fine controls</div>
+          </div>
+          <div class="mg-head-actions">
+            <button class="mg-reset-btn" id="fhResetBtn"><svg class="mg-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M3 12a9 9 0 1 0 2.64-6.36"/><polyline points="3,4 3,10 9,10"/></svg><span>RESET</span></button>
+          </div>
+        </div>
+        <div class="mg-preset-grid" id="fhQualGrid">
+          <button class="mg-card" data-qual="low">
+            <div class="mg-card-top"><span class="mg-card-name" data-qname="low">LOW</span><span class="mg-card-badge">1.0x</span></div>
+            <div class="mg-card-desc" data-qdesc="low">Lightweight shadows &amp; fast mode</div>
+          </button>
+          <button class="mg-card" data-qual="med">
+            <div class="mg-card-top"><span class="mg-card-name" data-qname="med">MED</span><span class="mg-card-badge">1.15x</span></div>
+            <div class="mg-card-desc" data-qdesc="med">2x MSAA &amp; 1536px soft shadows</div>
+          </button>
+          <button class="mg-card" data-qual="high">
+            <div class="mg-card-top"><span class="mg-card-name" data-qname="high">ULTRA</span><span class="mg-card-badge">1.5x</span></div>
+            <div class="mg-card-desc" data-qdesc="high">4x MSAA, wet SSR &amp; godrays</div>
+          </button>
+          <button class="mg-card selected" data-qual="xultra">
+            <div class="mg-card-top"><span class="mg-card-name" data-qname="xultra">XULTRA</span><span class="mg-card-badge">1.75x</span></div>
+            <div class="mg-card-desc" data-qdesc="xultra">4K shadows, full SSR &amp; max optics</div>
+          </button>
+        </div>
+        <div class="mg-ctrl-grid">
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptDpr">RENDER SCALE</span>
+            <div class="mg-slider-wrap">
+              <input class="mg-slider" id="optDpr" type="range" min="75" max="200" step="5" value="175" />
+              <span class="mg-val" id="optDprVal">1.75x</span>
+            </div>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptShadow">SHADOW MAP</span>
+            <div class="mg-seg" id="optShadowSeg">
+              <button class="mg-seg-btn" data-shadow="1024">1K</button>
+              <button class="mg-seg-btn" data-shadow="2048">2K</button>
+              <button class="mg-seg-btn on" data-shadow="4096">4K</button>
+            </div>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptSsr">WET SSR REFLECTION</span>
+            <button class="mg-toggle on" id="optSsr">ON</button>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptKuw">PAINTERLY KUWAHARA</span>
+            <button class="mg-toggle on" id="optKuw">ON</button>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptLens">LENS OPTICS</span>
+            <div class="mg-seg" id="optLensSeg">
+              <button class="mg-seg-btn" data-lens="0">OFF</button>
+              <button class="mg-seg-btn" data-lens="1">LOW</button>
+              <button class="mg-seg-btn" data-lens="2">HIGH</button>
+              <button class="mg-seg-btn on" data-lens="3">MAX</button>
+            </div>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptBloom">HDR BLOOM</span>
+            <button class="mg-toggle on" id="optBloom">ON</button>
+          </div>
+          <div class="mg-row full">
+            <span class="mg-lbl" id="lblOptFilter">COLOR GRADE</span>
+            <div class="mg-seg" id="optFilterSeg">
+              <button class="mg-seg-btn on" data-filter="cinema">CINEMA</button>
+              <button class="mg-seg-btn" data-filter="verdant">VERDANT</button>
+              <button class="mg-seg-btn" data-filter="golden">GOLDEN</button>
+              <button class="mg-seg-btn" data-filter="film">FILM</button>
+              <button class="mg-seg-btn" data-filter="cyber">CYBER</button>
+              <button class="mg-seg-btn" data-filter="noir">NOIR</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 02 AUDIO & ENGLISH CO-DRIVER PANEL -->
+      <div class="mg-panel" id="fhPanelAudio">
+        <div class="mg-head">
+          <div class="mg-head-title" id="fhAudTitle">SPATIAL AUDIO &amp; CO-DRIVER</div>
+          <div class="mg-head-desc" id="fhAudDesc">Deep boxer bass, smooth space transitions &amp; English pace notes</div>
+        </div>
+        <div class="mg-ctrl-grid">
+          <div class="mg-row full">
+            <span class="mg-lbl" id="fhLblAudioEnable">MASTER AUDIO</span>
+            <button class="mg-toggle on" id="fhAudioToggle">ON</button>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="fhLblMasterVol">MASTER VOLUME</span>
+            <div class="mg-slider-wrap">
+              <input class="mg-slider" id="fhMasterVol" type="range" min="0" max="100" value="80" />
+              <span class="mg-val" id="fhMasterVolVal">80%</span>
+            </div>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="fhLblEngineVol">ENGINE &amp; BASS</span>
+            <div class="mg-slider-wrap">
+              <input class="mg-slider" id="fhEngineVol" type="range" min="0" max="100" value="78" />
+              <span class="mg-val" id="fhEngineVolVal">78%</span>
+            </div>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="fhLblEnvVol">ENVIRONMENT &amp; NATURE</span>
+            <div class="mg-slider-wrap">
+              <input class="mg-slider" id="fhEnvVol" type="range" min="0" max="100" value="84" />
+              <span class="mg-val" id="fhEnvVolVal">84%</span>
+            </div>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="fhLblVoiceVol">CO-DRIVER (EN)</span>
+            <div class="mg-slider-wrap">
+              <input class="mg-slider" id="fhVoiceVol" type="range" min="0" max="100" value="72" />
+              <span class="mg-val" id="fhVoiceVolVal">72%</span>
+            </div>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="fhLblSpatial">SPATIAL REVERB &amp; CABIN</span>
+            <button class="mg-toggle on" id="fhSpatialToggle">ON</button>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptPaceVoice">ENGLISH PACE NOTES</span>
+            <button class="mg-toggle on" id="optPaceVoice">ON</button>
+          </div>
+          <div class="mg-row full">
+            <span class="mg-lbl" id="lblOptCallTiming">PACE CALL TIMING</span>
+            <div class="mg-seg" id="optTimingSeg">
+              <button class="mg-seg-btn" data-timing="early">EARLY</button>
+              <button class="mg-seg-btn on" data-timing="normal">NORMAL</button>
+              <button class="mg-seg-btn" data-timing="late">LATE</button>
+            </div>
+          </div>
+        </div>
+        <div class="mg-strip" id="fhAcousticReadout">
+          <span class="mg-tag accent" id="fhAcSpace">SPACE: OUTDOOR</span>
+          <span class="mg-tag" id="fhAcView">MIC: EXTERIOR</span>
+          <span class="mg-tag" id="fhAcSurf">SURFACE: GRAVEL</span>
+          <span class="mg-tag" id="fhAcBass">BASS: +8dB</span>
+        </div>
+      </div>
+
+      <!-- 03 DRIVING & HUD PANEL -->
+      <div class="mg-panel" id="fhPanelDriving">
+        <div class="mg-head">
+          <div class="mg-head-title" id="fhDrvTitle">DRIVING, CAMERA &amp; HUD</div>
+          <div class="mg-head-desc" id="fhDrvDesc">Camera FOV, inertial HUD, pace signpost &amp; stage atmosphere</div>
+        </div>
+        <div class="mg-ctrl-grid">
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptCam">CAMERA VIEW</span>
+            <div class="mg-seg" id="optCamSeg">
+              <button class="mg-seg-btn on" data-cam="chase" id="optCamChase">CHASE</button>
+              <button class="mg-seg-btn" data-cam="cockpit" id="optCamCockpit">COCKPIT</button>
+            </div>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptFov">FIELD OF VIEW</span>
+            <div class="mg-slider-wrap">
+              <input class="mg-slider" id="optFov" type="range" min="-8" max="12" step="1" value="0" />
+              <span class="mg-val" id="optFovVal">STD</span>
+            </div>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptPaceHud">ON-SCREEN PACE BANNER</span>
+            <button class="mg-toggle on" id="optPaceHud">ON</button>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptHudSway">HUD INERTIAL SWAY</span>
+            <button class="mg-toggle on" id="optHudSway">ON</button>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptShowFps">SHOW FPS COUNTER</span>
+            <button class="mg-toggle" id="optShowFps">OFF</button>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptGameMode">GAME MODE</span>
+            <div class="mg-seg" id="optModeSeg">
+              <button class="mg-seg-btn on" data-mode="stage" id="optModeStage">STAGE</button>
+              <button class="mg-seg-btn" data-mode="cruise" id="optModeCruise">CRUISE</button>
+            </div>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptMobileCtrl">MOBILE TOUCH UI</span>
+            <button class="mg-toggle" id="optMobileCtrl">OFF</button>
+          </div>
+          <div class="mg-row">
+            <span class="mg-lbl" id="lblOptMobileAutoGas">TOUCH AUTO-GAS</span>
+            <button class="mg-toggle on" id="optMobileAutoGas">ON</button>
+          </div>
+          <div class="mg-row full">
+            <span class="mg-lbl" id="lblOptWeather">WEATHER</span>
+            <div class="mg-seg" id="optWeatherSeg">
+              <button class="mg-seg-btn on" data-weather="overcast">RAIN</button>
+              <button class="mg-seg-btn" data-weather="drizzle">DRIZZLE</button>
+              <button class="mg-seg-btn" data-weather="downpour">STORM</button>
+              <button class="mg-seg-btn" data-weather="mist">MIST</button>
+              <button class="mg-seg-btn" data-weather="clear">CLEAR</button>
+              <button class="mg-seg-btn" data-weather="goldmist">GOLDMIST</button>
+            </div>
+          </div>
+          <div class="mg-row full">
+            <span class="mg-lbl" id="lblOptTime">TIME OF DAY</span>
+            <div class="mg-seg" id="optTimeSeg">
+              <button class="mg-seg-btn" data-time="dawn">DAWN</button>
+              <button class="mg-seg-btn" data-time="morning">MORNING</button>
+              <button class="mg-seg-btn on" data-time="noon">NOON</button>
+              <button class="mg-seg-btn" data-time="golden">GOLDEN</button>
+              <button class="mg-seg-btn" data-time="dusk">DUSK</button>
+              <button class="mg-seg-btn" data-time="bluehour">NIGHT</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 04 LANGUAGE PANEL -->
+      <div class="mg-panel" id="fhPanelLanguage">
+        <div class="mg-head">
+          <div class="mg-head-title" id="fhLangTitle">INTERFACE LANGUAGE</div>
+          <div class="mg-head-desc" id="fhLangDesc">Instant HUD &amp; stage localization (Co-Driver voice is unified English)</div>
+        </div>
+        <div class="mg-preset-grid lang-grid" id="fhLangGrid">
+          <button class="mg-card" data-lang="zh">
+            <div class="mg-card-top"><span class="mg-card-badge">ZH-CN</span></div>
+            <div class="mg-lang-big">简体中文</div>
+            <div class="mg-card-desc">中文界面、赛段译名与路书标识</div>
+          </button>
+          <button class="mg-card" data-lang="en">
+            <div class="mg-card-top"><span class="mg-card-badge">EN-US</span></div>
+            <div class="mg-lang-big">English</div>
+            <div class="mg-card-desc">English HUD, rally stages &amp; pace notes</div>
+          </button>
+          <button class="mg-card" data-lang="ja">
+            <div class="mg-card-top"><span class="mg-card-badge">JA-JP</span></div>
+            <div class="mg-lang-big">日本語</div>
+            <div class="mg-card-desc">日本語UI・ステージ表記・ペースノート</div>
+          </button>
+        </div>
+        <div class="mg-note" id="fhLangVoiceNote">CO-DRIVER VOICE: UNIFIED ENGLISH (EN-US) STAGE RALLY PACE NOTES</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mg-foot">
+    <div class="mg-foot-keys">
+      <span><span class="mg-k">ENTER / ESC</span><span id="fhFootResume">START / RESUME</span></span>
+      <span><span class="mg-k">1-4</span><span id="fhFootTabs">TABS</span></span>
+      <span><span class="mg-k">M</span><span id="fhFootMute">MUTE</span></span>
+      <span><span class="mg-k">V</span><span id="fhFootView">CAMERA</span></span>
+    </div>
+    <div id="fhFootStatus">WEBGL2 CEL×REALISTIC RALLY ENGINE // V7</div>
+  </div>
+</div>
+<script>

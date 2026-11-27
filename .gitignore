@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+qa_out/
+.DS_Store
+Thumbs.db
+*.mp4
+*.mov
+*.mkv
+.venv/
+node_modules/

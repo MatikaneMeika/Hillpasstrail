@@ -1,0 +1,13 @@
+# VERTICAL_SLICES — 7-Stage Anti-Degradation Build Roadmap
+
+If you (or an AI coding agent) are rebuilding a project of this caliber from scratch, **never blind-write all 12 modules at once**. Build and verify strictly in these 7 vertical slices; do not start Slice `N+1` until Slice `N` passes its hard gates.
+
+| Slice | Goal | Target Modules | Mandatory Pass/Fail Gate |
+| :---: | :--- | :--- | :--- |
+| **Slice 1: Golden Prototype** | Minimal drivable endless curve + car + shadows + `window.__G` | `shell_head`, `glsl_common`, `frame_post` (core), `track_ground` (1 biome + origin shift), `rallycar` (core), `hud_audio` (loop + `__G`) | `0` console/GL errors; `auditTopology(60)` 0 self-intersections / 0 seam gap; `testOriginShift()` delta `< 0.01`; real `KeyW` moves car `> 40m` |
+| **Slice 2: Visual Aesthetics Core** | Lock Alpha routing + 21 procedural PBR textures + sky/mountains + full post-FX | `textures.js`, `sky_backdrop.js`, `frame_post.js` (CAS, SSR, ink, god-rays, raindrops, ACES) | Inspect rendered PNGs: clear sky/clouds, wet puddle SSR reflecting sky & car rear, hero car 1.75px ink + zero motion-blur bleed, zero dry-road black dots |
+| **Slice 3: Roadside Ecosystem & Foliage** | Spherical-lit leaf-card trees + 4-ring grass/flowers + zero bare dirt shoulders | `trees_foliage.js`, `blades_flowers.js` | `0` unused `build*Geo` builders; dense roadside vegetation covering shoulder skirts; no billboard paper-card shading artifacts |
+| **Slice 4: 7 Biomes, Bridges & Tunnels** | All 33 templates, 7 biomes, 4 bridges, 2 tunnels, asymmetric tunnel eye adaptation | Complete `track_ground.js` | Tunnel entry/interior/exit and bridge abutment screenshots show 0 floating edges and 0 terrain clipping; 5-seed `runInvariants()` all green |
+| **Slice 5: Hero Car Sculpt & 1st-Person Cockpit** | Lofted `#22` body, 12-spoke wheels, carbon roll-cage cockpit, live LCD & wipers | Complete `rallycar.js`, `cockpit_v4.js`, `fx_rain.js` | Cockpit screenshot shows intact roof/pillars/windshield (no convertible clipping), wiper dry arc strictly inside glass, wheel spoke normals outward |
+| **Slice 6: Gameplay, Audio, Pace Notes & Mobile** | Stage/Cruise scoring, WebAudio synthesis, speed-adaptive pace notes, touch controls | `gameplay_mobile.js`, complete `hud_audio.js` | Real keyboard drive triggers score events & pace notes; stop `< 4.5 m/s` silences speech; `390×844` mobile touch UI mounts cleanly |
+| **Slice 7: Deterministic Single-File OSS Release** | Lossless LF bundler, hygiene scanner, portable Playwright QA, CI | `scripts/build.py`, `scripts/check_hygiene.py`, `qa/verify_gates.py`, `.github/workflows/ci.yml` | `build.py --check` PASS, `check_hygiene.py` PASS, `verify_gates.py` PASS with `0` external requests and `0` errors |
