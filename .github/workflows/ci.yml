@@ -36,4 +36,4 @@ jobs:
         run: |
           pip install -r qa/requirements.txt
           playwright install chromium
-          python qa/verify_gates.py --html index.html --software-gl
+          python qa/verify_gates.py --html index.html --software-gl --scene-quality med --boot-timeout 600

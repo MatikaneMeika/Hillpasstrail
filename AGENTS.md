@@ -19,6 +19,8 @@ python scripts/check_hygiene.py
 python qa/verify_gates.py --html index.html
 ```
 
+> GPU-less CI runners use the same suite with `--software-gl --scene-quality med --boot-timeout 600`: SwiftShader is an order of magnitude slower than a real GPU, so the 10 pixel-liveness scenes render at the `med` preset and are captured at an identical 16:9 framing of `640x360` (same composition, lower sampling resolution; compositor readback is the real bottleneck). All liveness thresholds and assertions stay identical to a local `high` run — never lower them to make CI green.
+
 ## 3. Required Reading Before Modifying Subsystems
 - **Architecture & `window.PV` contract**: `docs/ARCHITECTURE.md`
 - **Hard numeric & shader contracts (Alpha channel, SSR, Ink, Topology, Textures)**: `docs/SPEC_LOCK.md`

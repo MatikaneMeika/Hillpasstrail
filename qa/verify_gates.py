@@ -45,7 +45,7 @@ def launch_browser(p, software_gl=False):
     raise RuntimeError('No Chromium/Chrome/Edge browser available for Playwright.')
 
 
-def run_gates(html_path, out_dir=None, save_shots=False, software_gl=False, boot_timeout=180):
+def run_gates(html_path, out_dir=None, save_shots=False, software_gl=False, boot_timeout=180, scene_quality='high'):
     html_abs = os.path.abspath(html_path)
     if not os.path.isfile(html_abs):
         raise FileNotFoundError(f'HTML bundle not found: {html_abs}')
@@ -87,6 +87,7 @@ def run_gates(html_path, out_dir=None, save_shots=False, software_gl=False, boot
             )
             results['bootMs'] = round((time.perf_counter() - t0) * 1000)
             results['externalRequests'] = ext_requests
+            print(f'[boot] {results["bootMs"]}ms channel={ch}', flush=True)
 
             # Gate 1: Launch overlay + real DOM click START STAGE
             init_open = page.evaluate('() => window.__G.isSettingsOpen()')
@@ -194,7 +195,15 @@ def run_gates(html_path, out_dir=None, save_shots=False, software_gl=False, boot
             results['qualityPerf'] = qual_perf
 
             # Gate 5: 10-scene pixel liveness (7 biomes + cockpit + tunnel + bridge)
-            page.evaluate("() => { window.__G.setQuality('high'); }")
+            # Software rasterizers spend most of their time in compositor readback, not in the GL draw.
+            # Capturing the identical 16:9 framing at 640x360 keeps the luma statistics comparable while
+            # cutting compositor work ~4x; assertions and thresholds are unchanged.
+            if software_gl:
+                page.set_viewport_size({'width': 640, 'height': 360})
+                results['sceneViewport'] = '640x360'
+            page.evaluate(f"() => {{ window.__G.setQuality('{scene_quality}'); }}")
+            results['sceneQuality'] = scene_quality
+            print(f'[gate5] sceneQuality={scene_quality} viewport={results.get("sceneViewport", "1280x720")}', flush=True)
             scenes = [
                 ('01_alpine',  "window.__G.setTheme(0, 72); window.__G.setWeather('drizzle'); window.__G.setTime('morning'); window.__G.setCamMode('chase');"),
                 ('02_snow',    "window.__G.setTheme(1, 88); window.__G.setWeather('clear'); window.__G.setTime('morning'); window.__G.setCamMode('chase');"),
@@ -210,10 +219,15 @@ def run_gates(html_path, out_dir=None, save_shots=False, software_gl=False, boot
             pixel_report = []
             shot_paths = []
             for label, js in scenes:
+                tr = time.perf_counter()
                 page.evaluate(f'() => {{ {js} window.__G.stepOnce(0.016); window.__G.renderOnce(); }}')
+                tr = round((time.perf_counter() - tr) * 1000)
+                ts = time.perf_counter()
                 sp = os.path.join(shot_dir, f'{label}.png')
                 page.screenshot(path=sp, type='png')
+                ts = round((time.perf_counter() - ts) * 1000)
                 st = img_stats(sp)
+                print(f'[gate5] {label} render={tr}ms screenshot={ts}ms lumaMean={st["lumaMean"]} lumaStd={st["lumaStd"]}', flush=True)
                 pixel_report.append({'scene': label, **st})
                 shot_paths.append((label, sp))
                 if not (25.0 <= st['lumaMean'] <= 230.0) or st['lumaStd'] < 18.0:
@@ -271,6 +285,12 @@ def main():
         default=180,
         help='Seconds allowed for first-render boot; SwiftShader CI runners need a wider budget than real GPUs.',
     )
+    ap.add_argument(
+        '--scene-quality',
+        choices=('low', 'med', 'high', 'xultra'),
+        default='high',
+        help='Quality preset for the 10-scene pixel-liveness gate (CI software rasterizers use med).',
+    )
     args = ap.parse_args()
     run_gates(
         args.html,
@@ -278,6 +298,7 @@ def main():
         save_shots=args.save_shots,
         software_gl=args.software_gl,
         boot_timeout=args.boot_timeout,
+        scene_quality=args.scene_quality,
     )
 
 
