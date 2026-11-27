@@ -11,18 +11,46 @@ from playwright.sync_api import sync_playwright
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
-
-def img_stats(path):
-    im = Image.open(path).convert('RGB').resize((320, 180))
-    px = list(im.get_flattened_data() if hasattr(im, 'get_flattened_data') else im.getdata())
-    n = len(px)
-    r = sum(p[0] for p in px) / n
-    g = sum(p[1] for p in px) / n
-    b = sum(p[2] for p in px) / n
-    luma = [0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2] for p in px]
-    mean_l = sum(luma) / n
-    std_l = (sum((x - mean_l) ** 2 for x in luma) / n) ** 0.5
-    return {'rgb': [round(r, 1), round(g, 1), round(b, 1)], 'lumaMean': round(mean_l, 1), 'lumaStd': round(std_l, 1)}
+# In-page pixel probe: read the default framebuffer, restore GL bindings, then summarise a
+# 320x180 nearest-neighbour downsample (images are compared by luma statistics, so a full-size
+# readback bridge payload is unnecessary).
+PIXEL_PROBE_JS = """
+() => {
+  const canvas = document.querySelector('canvas');
+  const gl = canvas.getContext('webgl2');
+  if (!gl) return null;
+  const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+  const prevRead = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+  const buf = new Uint8Array(w * h * 4);
+  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, prevRead);
+  const TW = 320, TH = 180;
+  let sumR = 0, sumG = 0, sumB = 0, sumL = 0, sumL2 = 0, black = 0;
+  for (let y = 0; y < TH; y++) {
+    const sy = Math.min(h - 1, Math.floor((TH - 1 - y) * h / TH));
+    for (let x = 0; x < TW; x++) {
+      const sx = Math.min(w - 1, Math.floor(x * w / TW));
+      const i = (sy * w + sx) * 4;
+      const r = buf[i], g = buf[i + 1], b = buf[i + 2];
+      sumR += r; sumG += g; sumB += b;
+      const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      sumL += l; sumL2 += l * l;
+      if (r === 0 && g === 0 && b === 0) black++;
+    }
+  }
+  const n = TW * TH;
+  const mean = sumL / n;
+  const std = Math.sqrt(Math.max(0, sumL2 / n - mean * mean));
+  return {
+    rgb: [sumR / n, sumG / n, sumB / n].map(v => +v.toFixed(1)),
+    lumaMean: +mean.toFixed(1),
+    lumaStd: +std.toFixed(1),
+    blackPct: +(100 * black / n).toFixed(2),
+    buffer: [w, h],
+  };
+}
+"""
 
 
 def launch_browser(p, software_gl=False):
@@ -195,15 +223,13 @@ def run_gates(html_path, out_dir=None, save_shots=False, software_gl=False, boot
             results['qualityPerf'] = qual_perf
 
             # Gate 5: 10-scene pixel liveness (7 biomes + cockpit + tunnel + bridge)
-            # Software rasterizers spend most of their time in compositor readback, not in the GL draw.
-            # Capturing the identical 16:9 framing at 640x360 keeps the luma statistics comparable while
-            # cutting compositor work ~4x; assertions and thresholds are unchanged.
-            if software_gl:
-                page.set_viewport_size({'width': 640, 'height': 360})
-                results['sceneViewport'] = '640x360'
+            # Pixels are read straight from the default framebuffer instead of page.screenshot():
+            # the headless-shell compositor can stall indefinitely when the render loop is paused,
+            # while an in-page readPixels readback is deterministic, portable and ~100x cheaper.
             page.evaluate(f"() => {{ window.__G.setQuality('{scene_quality}'); }}")
             results['sceneQuality'] = scene_quality
-            print(f'[gate5] sceneQuality={scene_quality} viewport={results.get("sceneViewport", "1280x720")}', flush=True)
+            results['sceneCapture'] = 'gl-readpixels'
+            print(f'[gate5] sceneQuality={scene_quality} capture=gl-readpixels', flush=True)
             scenes = [
                 ('01_alpine',  "window.__G.setTheme(0, 72); window.__G.setWeather('drizzle'); window.__G.setTime('morning'); window.__G.setCamMode('chase');"),
                 ('02_snow',    "window.__G.setTheme(1, 88); window.__G.setWeather('clear'); window.__G.setTime('morning'); window.__G.setCamMode('chase');"),
@@ -220,16 +246,26 @@ def run_gates(html_path, out_dir=None, save_shots=False, software_gl=False, boot
             shot_paths = []
             for label, js in scenes:
                 tr = time.perf_counter()
-                page.evaluate(f'() => {{ {js} window.__G.stepOnce(0.016); window.__G.renderOnce(); }}')
+                st = page.evaluate(
+                    f'() => {{ {js} window.__G.stepOnce(0.016); window.__G.renderOnce(); return ({PIXEL_PROBE_JS})(); }}'
+                )
                 tr = round((time.perf_counter() - tr) * 1000)
-                ts = time.perf_counter()
-                sp = os.path.join(shot_dir, f'{label}.png')
-                page.screenshot(path=sp, type='png')
-                ts = round((time.perf_counter() - ts) * 1000)
-                st = img_stats(sp)
-                print(f'[gate5] {label} render={tr}ms screenshot={ts}ms lumaMean={st["lumaMean"]} lumaStd={st["lumaStd"]}', flush=True)
+                if not st:
+                    failures.append(f'Scene {label}: WebGL2 canvas unavailable for pixel probe')
+                    continue
+                print(
+                    f'[gate5] {label} render+probe={tr}ms lumaMean={st["lumaMean"]} '
+                    f'lumaStd={st["lumaStd"]} black={st["blackPct"]}%',
+                    flush=True,
+                )
                 pixel_report.append({'scene': label, **st})
-                shot_paths.append((label, sp))
+                if save_shots:
+                    sp = os.path.join(shot_dir, f'{label}.png')
+                    try:
+                        page.screenshot(path=sp, type='png')
+                        shot_paths.append((label, sp))
+                    except Exception as exc:  # screenshots are for humans; never fail the gate on them
+                        print(f'[gate5] {label} screenshot skipped: {exc}', flush=True)
                 if not (25.0 <= st['lumaMean'] <= 230.0) or st['lumaStd'] < 18.0:
                     failures.append(f'Scene {label} failed pixel liveness: {st}')
             results['scenePixels'] = pixel_report

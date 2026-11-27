@@ -19,7 +19,7 @@ python scripts/check_hygiene.py
 python qa/verify_gates.py --html index.html
 ```
 
-> GPU-less CI runners use the same suite with `--software-gl --scene-quality med --boot-timeout 600`: SwiftShader is an order of magnitude slower than a real GPU, so the 10 pixel-liveness scenes render at the `med` preset and are captured at an identical 16:9 framing of `640x360` (same composition, lower sampling resolution; compositor readback is the real bottleneck). All liveness thresholds and assertions stay identical to a local `high` run — never lower them to make CI green.
+> GPU-less CI runners use the same suite with `--software-gl --scene-quality med --boot-timeout 600`: SwiftShader needs a far wider first-render budget than a real GPU, and a single `high`/1280x720 frame there costs ~30s, so the 10 pixel-liveness scenes run at the `med` preset (local GPU runs stay at `high`; `results.sceneQuality` records which was used). Pixels come from an in-page `gl.readPixels` probe on the default framebuffer instead of `page.screenshot()`, because the headless-shell compositor can stall indefinitely while the render loop is paused. Thresholds and assertions are identical in both profiles — never lower them to make CI green.
 
 ## 3. Required Reading Before Modifying Subsystems
 - **Architecture & `window.PV` contract**: `docs/ARCHITECTURE.md`
